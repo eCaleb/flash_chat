@@ -8,6 +8,8 @@ late User loggedInUser;
 
 class ChatScreen extends StatefulWidget {
   static const String id = 'chat_screen';
+
+  const ChatScreen({super.key});
   @override
   _ChatScreenState createState() => _ChatScreenState();
 }
@@ -39,7 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: null,
+        automaticallyImplyLeading: false,
         actions: <Widget>[
           IconButton(
               icon: const Icon(Icons.close),
@@ -118,13 +120,16 @@ class MessageStream extends StatelessWidget {
             final messageText = messageData['text'];
             final messageSender = messageData['sender'];
 
+            final currentUser = loggedInUser.email;
+
             final messageBubble =
-                MessageBubble(text: messageText, sender: messageSender);
+                MessageBubble(text: messageText, sender: messageSender,isMe: currentUser == messageSender,);
 
             messageBubbles.add(messageBubble);
           }
           return Expanded(
             child: ListView(
+              reverse: true,
               children: messageBubbles,
             ),
           );
@@ -133,31 +138,47 @@ class MessageStream extends StatelessWidget {
 }
 
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({super.key, required this.text, required this.sender});
+  const MessageBubble({
+    super.key,
+    required this.text,
+    required this.sender,
+    required this.isMe,
+  });
 
   final String text;
   final String sender;
+  final bool isMe;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(10.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Text(
             sender,
             style: const TextStyle(color: Colors.black54, fontSize: 12.0),
           ),
           Material(
-            borderRadius: const BorderRadius.only(topLeft: Radius.circular(30.0),bottomLeft: Radius.circular(30.0),bottomRight: Radius.circular(30.0)),
-            color: Colors.lightBlueAccent,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(isMe ? 30.0 : 0.0),
+              topRight: Radius.circular(isMe ? 0.0 : 30.0),
+              bottomLeft: const Radius.circular(30.0),
+              bottomRight: const Radius.circular(30.0),
+            ),
+            color: isMe ? Colors.lightBlueAccent : Colors.white,
+            elevation: 5.0,
             child: Padding(
               padding:
                   const EdgeInsets.symmetric(vertical: 10.0, horizontal: 12.0),
               child: Text(
                 text,
-                style: const TextStyle(color: Colors.white, fontSize: 15.0),
+                style: TextStyle(
+                  color: isMe ? Colors.white : Colors.black,
+                  fontSize: 15.0,
+                ),
               ),
             ),
           ),

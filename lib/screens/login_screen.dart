@@ -160,7 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 password: password,
                               );
                               if (existingUser != null) {
-                                Navigator.pushNamed(context, ChatScreen.id);
+                                Navigator.pushReplacementNamed(context, ChatScreen.id);
                               }
                             } catch (e) {
                               setState(() {
