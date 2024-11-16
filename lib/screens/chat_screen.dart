@@ -4,6 +4,7 @@ import 'package:flash_chat/constants.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 final _firestore = FirebaseFirestore.instance;
+late User loggedInUser;
 
 class ChatScreen extends StatefulWidget {
   static const String id = 'chat_screen';
@@ -14,7 +15,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final messageTextController = TextEditingController();
   final _auth = FirebaseAuth.instance;
-  late User loggedInUser;
   late String messageText;
 
   @override
@@ -150,7 +150,7 @@ class MessageBubble extends StatelessWidget {
             style: const TextStyle(color: Colors.black54, fontSize: 12.0),
           ),
           Material(
-            borderRadius: BorderRadius.circular(30.0),
+            borderRadius: const BorderRadius.only(topLeft: Radius.circular(30.0),bottomLeft: Radius.circular(30.0),bottomRight: Radius.circular(30.0)),
             color: Colors.lightBlueAccent,
             child: Padding(
               padding:
