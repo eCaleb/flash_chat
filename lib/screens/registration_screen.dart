@@ -33,8 +33,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
@@ -52,174 +50,148 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       ),
       body: ModalProgressHUD(
         inAsyncCall: _loading,
-        progressIndicator: const CircularProgressIndicator(
-          color: Colors.blueAccent,
-        ),
+        progressIndicator: const CircularProgressIndicator(color: Colors.blueAccent),
         opacity: 0.0,
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Flexible(
-                flex: keyboardVisible ? 2 : 3,
-                child: Hero(
-                  tag: 'logo',
-                  child: Image.asset('assets/images/logo.png'),
+          child: GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(), 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Flexible(
+                  flex: 3,
+                  child: Hero(
+                    tag: 'logo',
+                    child: Image.asset('assets/images/logo.png'),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10.0),
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: SingleChildScrollView(
-                    reverse: true,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        TextField(
-                          keyboardType: TextInputType.emailAddress,
-                          textAlign: TextAlign.center,
-                          onChanged: (value) {
-                            email = value;
-                            setState(() {
-                              emailError = '';
-                            });
-                          },
-                          decoration: kRegisterEmailDecoration,
-                        ),
-                        if (emailError.isNotEmpty)
-                          Text(
-                            emailError,
-                            style: const TextStyle(color: Colors.red),
+                const SizedBox(height: 10.0),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          // Email TextField with validation
+                          TextField(
+                            keyboardType: TextInputType.emailAddress,
                             textAlign: TextAlign.center,
-                          ),
-                        const SizedBox(height: 8.0),
-                        TextField(
-                          obscureText: !isPasswordVisible,
-                          textAlign: TextAlign.center,
-                          onChanged: (value) {
-                            password = value;
-                            setState(() {
-                              passwordError = '';
-                            });
-                          },
-                          decoration: kRegisterPasswordDecoration.copyWith(
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                isPasswordVisible
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                                color: Colors.grey,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  isPasswordVisible = !isPasswordVisible;
-                                });
-                              },
+                            onChanged: (value) {
+                              email = value;
+                              setState(() {
+                                emailError = isValidEmail(value) ? '' : 'Invalid email format';
+                              });
+                            },
+                            decoration: kRegisterEmailDecoration.copyWith(
+                              errorText: emailError.isEmpty ? null : emailError,
                             ),
                           ),
-                        ),
-                        if (passwordError.isNotEmpty)
-                          Text(
-                            passwordError,
-                            style: const TextStyle(color: Colors.red),
+                          const SizedBox(height: 8.0),
+                          // Password TextField with toggle and validation
+                          TextField(
+                            obscureText: !isPasswordVisible,
                             textAlign: TextAlign.center,
+                            onChanged: (value) {
+                              password = value;
+                              setState(() {
+                                passwordError = isValidPassword(value)
+                                    ? ''
+                                    : 'Password must be 6+ characters and not contain special symbols.';
+                              });
+                            },
+                            decoration: kRegisterPasswordDecoration.copyWith(
+                              suffixIcon: Tooltip(
+                                message: isPasswordVisible ? 'Hide Password' : 'Show Password',
+                                child: IconButton(
+                                  icon: Icon(
+                                    isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      isPasswordVisible = !isPasswordVisible;
+                                    });
+                                  },
+                                ),
+                              ),
+                              errorText: passwordError.isEmpty ? null : passwordError,
+                            ),
                           ),
-                        const SizedBox(height: 24.0),
-                        if (generalError.isNotEmpty)
-                          Text(
-                            generalError,
-                            style: const TextStyle(color: Colors.red),
-                            textAlign: TextAlign.center,
+                          const SizedBox(height: 24.0),
+                          if (generalError.isNotEmpty)
+                            Text(
+                              generalError,
+                              style: const TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center,
+                            ),
+                          const SizedBox(height: 16.0),
+                          // Register Button
+                          RoundedButton(
+                            buttonColor: Colors.blueAccent,
+                            onPressed: () async {
+                              if (email.isEmpty || !isValidEmail(email)) {
+                                setState(() {
+                                  emailError = 'Enter a valid email.';
+                                });
+                                return;
+                              }
+                              if (password.isEmpty || !isValidPassword(password)) {
+                                setState(() {
+                                  passwordError =
+                                      'Password must be 6+ characters and not contain special symbols.';
+                                });
+                                return;
+                              }
+            
+                              setState(() {
+                                _loading = true;
+                                generalError = '';
+                              });
+            
+                              try {
+                                final newUser =
+                                    await _auth.createUserWithEmailAndPassword(
+                                  email: email,
+                                  password: password,
+                                );
+                                // Send email verification
+                                await newUser.user!.sendEmailVerification();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Verification email sent.')),
+                                );
+            
+                                // Redirect to login
+                                await Future.delayed(const Duration(seconds: 2));
+                                Navigator.pushReplacementNamed(context, LoginScreen.id);
+                              } on FirebaseAuthException catch (e) {
+                                setState(() {
+                                  generalError =
+                                      e.code == 'email-already-in-use'
+                                          ? 'This email is already registered.'
+                                          : e.message ?? 'An error occurred.';
+                                });
+                              } catch (e) {
+                                setState(() {
+                                  generalError = 'An unexpected error occurred: $e';
+                                });
+                              } finally {
+                                setState(() {
+                                  _loading = false;
+                                });
+                              }
+                            },
+                            text: 'Register',
                           ),
-                        RoundedButton(
-                          buttonColor: Colors.blueAccent,
-                          onPressed: () async {
-                            setState(() {
-                              emailError = '';
-                              passwordError = '';
-                              generalError = '';
-                            });
-
-                            if (email.isEmpty) {
-                              setState(() {
-                                emailError = 'Please enter your email.';
-                              });
-                              return;
-                            }
-
-                            if (!isValidEmail(email)) {
-                              setState(() {
-                                emailError = 'Please enter a valid email.';
-                              });
-                              return;
-                            }
-
-                            if (password.isEmpty) {
-                              setState(() {
-                                passwordError = 'Please enter your password.';
-                              });
-                              return;
-                            }
-
-                            if (!isValidPassword(password)) {
-                              setState(() {
-                                passwordError =
-                                    'Password must be 6+ characters without special symbols.';
-                              });
-                              return;
-                            }
-
-                            setState(() {
-                              _loading = true;
-                            });
-
-                            try {
-                              final newUser =
-                                  await _auth.createUserWithEmailAndPassword(
-                                email: email,
-                                password: password,
-                              );
-
-                              // Send email verification
-                              await newUser.user!.sendEmailVerification();
-
-                              setState(() {
-                                generalError =
-                                    'Verification email sent. Redirecting to login...';
-                              });
-
-                              // Delay to show the verification message
-                              await Future.delayed(const Duration(seconds: 2));
-
-                              // Navigate to login screen
-                              Navigator.pushReplacementNamed(
-                                  context, LoginScreen.id);
-                            } on FirebaseAuthException catch (e) {
-                              setState(() {
-                                generalError =
-                                    e.message ?? 'An error occurred.';
-                              });
-                            } catch (e) {
-                              setState(() {
-                                generalError = e.toString();
-                              });
-                            } finally {
-                              setState(() {
-                                _loading = false;
-                              });
-                            }
-                          },
-                          text: 'Register',
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -17,18 +17,13 @@ class _LoginScreenState extends State<LoginScreen> {
   String email = '';
   String password = '';
   bool _loading = false;
-  String emailError = '';
   bool isPasswordVisible = false;
+  String emailError = '';
   String passwordError = '';
   String generalError = '';
 
   bool isValidEmail(String email) {
     return RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email);
-  }
-
-  bool isValidPassword(String password) {
-    return password.length >= 6 &&
-        !RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
   }
 
   @override
@@ -52,198 +47,200 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       body: ModalProgressHUD(
         inAsyncCall: _loading,
-        blur: BorderSide.strokeAlignCenter,
-        color: Colors.lightBlueAccent,
+        progressIndicator: const CircularProgressIndicator(color: Colors.blueAccent),
+        opacity: 0.0,
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Flexible(
-                flex: keyboardVisible ? 2 : 3,
-                child: Hero(
-                  tag: 'logo',
-                  child: Image.asset('assets/images/logo.png'),
+          child: GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(), 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Flexible(
+                  flex: keyboardVisible ? 2 : 3,
+                  child: Hero(
+                    tag: 'logo',
+                    child: Image.asset('assets/images/logo.png'),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10.0),
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: SingleChildScrollView(
-                    reverse: true,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        TextField(
-                          keyboardType: TextInputType.emailAddress,
-                          textAlign: TextAlign.center,
-                          onChanged: (value) {
-                            email = value;
-                            setState(() {
-                              emailError = '';
-                            });
-                          },
-                          decoration: kLogInEmailDecoration,
-                        ),
-                        if (emailError.isNotEmpty)
-                          Text(
-                            emailError,
-                            style: const TextStyle(color: Colors.red),
+                const SizedBox(height: 10.0),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          // Email TextField with Validation
+                          TextField(
+                            keyboardType: TextInputType.emailAddress,
                             textAlign: TextAlign.center,
-                          ),
-                        const SizedBox(height: 8.0),
-                        TextField(
-                          obscureText: !isPasswordVisible,
-                          textAlign: TextAlign.center,
-                          onChanged: (value) {
-                            password = value;
-                            setState(() {
-                              passwordError = '';
-                            });
-                          },
-                          decoration: kLogInPasswordDecoration.copyWith(
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                isPasswordVisible
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                                color: Colors.grey,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  isPasswordVisible = !isPasswordVisible;
-                                });
-                              },
+                            onChanged: (value) {
+                              email = value;
+                              setState(() {
+                                emailError = isValidEmail(value) ? '' : 'Invalid email format';
+                              });
+                            },
+                            decoration: kLogInEmailDecoration.copyWith(
+                              errorText: emailError.isEmpty ? null : emailError,
                             ),
                           ),
-                        ),
-                        if (passwordError.isNotEmpty)
-                          Text(
-                            passwordError,
-                            style: const TextStyle(color: Colors.red),
+                          const SizedBox(height: 8.0),
+                          // Password TextField with Visibility Toggle
+                          TextField(
+                            obscureText: !isPasswordVisible,
                             textAlign: TextAlign.center,
+                            onChanged: (value) {
+                              password = value;
+                              setState(() {
+                                passwordError = '';
+                              });
+                            },
+                            decoration: kLogInPasswordDecoration.copyWith(
+                              suffixIcon: Tooltip(
+                                message: isPasswordVisible ? 'Hide Password' : 'Show Password',
+                                child: IconButton(
+                                  icon: Icon(
+                                    isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      isPasswordVisible = !isPasswordVisible;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
                           ),
-                        const SizedBox(height: 24.0),
-                        if (generalError.isNotEmpty)
-                          Text(
-                            generalError,
-                            style: const TextStyle(color: Colors.red),
-                            textAlign: TextAlign.center,
-                          ),
-                        RoundedButton(
-                          buttonColor: Colors.lightBlueAccent,
-                          onPressed: () async {
-                            setState(() {
-                              emailError = '';
-                              passwordError = '';
-                              generalError = '';
-                            });
-
-                            if (email.isEmpty) {
-                              setState(() {
-                                emailError = 'Please enter your email.';
-                              });
-                              return;
-                            }
-
-                            if (!isValidEmail(email)) {
-                              setState(() {
-                                emailError = 'Please enter a valid email.';
-                              });
-                              return;
-                            }
-
-                            if (password.isEmpty) {
-                              setState(() {
-                                passwordError = 'Please enter your password.';
-                              });
-                              return;
-                            }
-
-                            if (!isValidPassword(password)) {
-                              setState(() {
-                                passwordError =
-                                    'Password must be 6+ characters without special symbols.';
-                              });
-                              return;
-                            }
-
-                            setState(() {
-                              _loading = true;
-                            });
-
-                            try {
-                              final userCredential =
-                                  await _auth.signInWithEmailAndPassword(
-                                email: email,
-                                password: password,
-                              );
-
-                              final user = userCredential.user;
-                              if (user != null) {
-                                if (user.emailVerified) {
-                                  // Email is verified, proceed to chat screen
-                                  Navigator.pushReplacementNamed(
-                                      context, ChatScreen.id);
-                                } else {
-                                  // Email is not verified
-                                  setState(() {
-                                    generalError =
-                                        'Email is not verified. Please verify your email.';
-                                  });
-                                }
-                              }
-                            } on FirebaseAuthException catch (e) {
-                              setState(() {
-                                generalError =
-                                    e.message ?? 'An error occurred.';
-                              });
-                            } catch (e) {
-                              setState(() {
-                                generalError =
-                                    'An unexpected error occurred: $e';
-                              });
-                            } finally {
-                              setState(() {
-                                _loading = false;
-                              });
-                            }
-                          },
-                          text: 'Log In',
-                        ),
-                        const SizedBox(height: 16.0),
-                        if (generalError.contains('not verified'))
-                          TextButton(
+                          if (passwordError.isNotEmpty)
+                            Text(
+                              passwordError,
+                              style: const TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center,
+                            ),
+                          const SizedBox(height: 24.0),
+                          if (generalError.isNotEmpty)
+                            Text(
+                              generalError,
+                              style: const TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center,
+                            ),
+                          const SizedBox(height: 16.0),
+                          // Log In Button
+                          RoundedButton(
+                            buttonColor: Colors.lightBlueAccent,
                             onPressed: () async {
+                              if (email.isEmpty || !isValidEmail(email)) {
+                                setState(() {
+                                  emailError = 'Enter a valid email.';
+                                });
+                                return;
+                              }
+            
+                              if (password.isEmpty) {
+                                setState(() {
+                                  passwordError = 'Please enter your password.';
+                                });
+                                return;
+                              }
+            
+                              setState(() {
+                                _loading = true;
+                                generalError = '';
+                              });
+            
                               try {
-                                final user = _auth.currentUser;
+                                final userCredential =
+                                    await _auth.signInWithEmailAndPassword(
+                                  email: email,
+                                  password: password,
+                                );
+            
+                                final user = userCredential.user;
                                 if (user != null) {
-                                  await user.sendEmailVerification();
-                                  setState(() {
-                                    generalError =
-                                        'Verification email sent. Please check your inbox.';
-                                  });
+                                  if (user.emailVerified) {
+                                    Navigator.pushReplacementNamed(context, ChatScreen.id);
+                                  } else {
+                                    setState(() {
+                                      generalError = 'Email not verified. Please verify.';
+                                    });
+                                  }
                                 }
-                              } catch (e) {
+                              } on FirebaseAuthException catch (e) {
                                 setState(() {
                                   generalError =
-                                      'Error sending verification email: $e';
+                                      e.code == 'wrong-password'
+                                          ? 'Incorrect password.'
+                                          : e.code == 'user-not-found'
+                                              ? 'No user found for this email.'
+                                              : e.message ?? 'An error occurred.';
+                                });
+                              } finally {
+                                setState(() {
+                                  _loading = false;
+                                });
+                              }
+                            },
+                            text: 'Log In',
+                          ),
+                          // Forgot Password Button
+                          TextButton(
+                            onPressed: () async {
+                              if (email.isEmpty || !isValidEmail(email)) {
+                                setState(() {
+                                  emailError = 'Enter a valid email to reset password.';
+                                });
+                                return;
+                              }
+            
+                              try {
+                                await _auth.sendPasswordResetEmail(email: email);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Password reset email sent.')),
+                                );
+                              } catch (e) {
+                                setState(() {
+                                  generalError = 'Error sending reset email: $e';
                                 });
                               }
                             },
                             child: const Text(
-                              'Resend Verification Email',
+                              'Forgot Password?',
                               style: TextStyle(color: Colors.blueAccent),
                             ),
                           ),
-                      ],
+                          // Resend Verification Email
+                          if (generalError.contains('not verified'))
+                            TextButton(
+                              onPressed: () async {
+                                try {
+                                  final user = _auth.currentUser;
+                                  if (user != null) {
+                                    await user.sendEmailVerification();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Verification email resent.')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  setState(() {
+                                    generalError = 'Error resending email: $e';
+                                  });
+                                }
+                              },
+                              child: const Text(
+                                'Resend Verification Email',
+                                style: TextStyle(color: Colors.blueAccent),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -54,50 +54,52 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       backgroundColor: animationColor.value,
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Hero(
-                  tag: 'logo',
-                  child: Container(
-                    height: animationSize.value, // Use animationSize here
-                    child: Image.asset('assets/images/logo.png'),
+        child: GestureDetector(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Hero(
+                    tag: 'logo',
+                    child: Container(
+                      height: animationSize.value, // Use animationSize here
+                      child: Image.asset('assets/images/logo.png'),
+                    ),
                   ),
-                ),
-                AnimatedTextKit(
-                  animatedTexts: [
-                    TypewriterAnimatedText('Flash Chat',
-                        textStyle: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 45.0,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        speed: const Duration(milliseconds: 200)),
-                  ],
-                  repeatForever: false,
-                  totalRepeatCount: 1,
-                )
-              ],
-            ),
-            const SizedBox(
-              height: 48.0,
-            ),
-            RoundedButton(
-                buttonColor: Colors.lightBlueAccent,
-                onPressed: () {
-                  Navigator.pushNamed(context, LoginScreen.id);
-                },
-                text: 'Log In'),
-            RoundedButton(
-                buttonColor: Colors.blueAccent,
-                onPressed: () {
-                  Navigator.pushNamed(context, RegistrationScreen.id);
-                },
-                text: 'Register')
-          ],
+                  AnimatedTextKit(
+                    animatedTexts: [
+                      TypewriterAnimatedText('Flash Chat',
+                          textStyle: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 45.0,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          speed: const Duration(milliseconds: 200)),
+                    ],
+                    repeatForever: false,
+                    totalRepeatCount: 1,
+                  )
+                ],
+              ),
+              const SizedBox(
+                height: 48.0,
+              ),
+              RoundedButton(
+                  buttonColor: Colors.lightBlueAccent,
+                  onPressed: () {
+                    Navigator.pushNamed(context, LoginScreen.id);
+                  },
+                  text: 'Log In'),
+              RoundedButton(
+                  buttonColor: Colors.blueAccent,
+                  onPressed: () {
+                    Navigator.pushNamed(context, RegistrationScreen.id);
+                  },
+                  text: 'Register')
+            ],
+          ),
         ),
       ),
     );
