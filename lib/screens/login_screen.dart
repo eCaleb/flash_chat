@@ -47,11 +47,12 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       body: ModalProgressHUD(
         inAsyncCall: _loading,
-        progressIndicator: const CircularProgressIndicator(color: Colors.blueAccent),
+        progressIndicator:
+            const CircularProgressIndicator(color: Colors.lightBlueAccent),
         opacity: 0.0,
         child: SafeArea(
           child: GestureDetector(
-            onTap: () => FocusScope.of(context).unfocus(), 
+            onTap: () => FocusScope.of(context).unfocus(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -79,7 +80,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             onChanged: (value) {
                               email = value;
                               setState(() {
-                                emailError = isValidEmail(value) ? '' : 'Invalid email format';
+                                emailError = isValidEmail(value)
+                                    ? ''
+                                    : 'Invalid email format';
                               });
                             },
                             decoration: kLogInEmailDecoration.copyWith(
@@ -99,10 +102,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             },
                             decoration: kLogInPasswordDecoration.copyWith(
                               suffixIcon: Tooltip(
-                                message: isPasswordVisible ? 'Hide Password' : 'Show Password',
+                                message: isPasswordVisible
+                                    ? 'Hide Password'
+                                    : 'Show Password',
                                 child: IconButton(
                                   icon: Icon(
-                                    isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                    isPasswordVisible
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
                                     color: Colors.grey,
                                   ),
                                   onPressed: () {
@@ -138,44 +145,45 @@ class _LoginScreenState extends State<LoginScreen> {
                                 });
                                 return;
                               }
-            
+
                               if (password.isEmpty) {
                                 setState(() {
                                   passwordError = 'Please enter your password.';
                                 });
                                 return;
                               }
-            
+
                               setState(() {
                                 _loading = true;
                                 generalError = '';
                               });
-            
+
                               try {
                                 final userCredential =
                                     await _auth.signInWithEmailAndPassword(
                                   email: email,
                                   password: password,
                                 );
-            
+
                                 final user = userCredential.user;
                                 if (user != null) {
                                   if (user.emailVerified) {
-                                    Navigator.pushReplacementNamed(context, ChatScreen.id);
+                                    Navigator.pushReplacementNamed(
+                                        context, ChatScreen.id);
                                   } else {
                                     setState(() {
-                                      generalError = 'Email not verified. Please verify.';
+                                      generalError =
+                                          'Email not verified. Please verify.';
                                     });
                                   }
                                 }
                               } on FirebaseAuthException catch (e) {
                                 setState(() {
-                                  generalError =
-                                      e.code == 'wrong-password'
-                                          ? 'Incorrect password.'
-                                          : e.code == 'user-not-found'
-                                              ? 'No user found for this email.'
-                                              : e.message ?? 'An error occurred.';
+                                  generalError = e.code == 'wrong-password'
+                                      ? 'Incorrect password.'
+                                      : e.code == 'user-not-found'
+                                          ? 'No user found for this email.'
+                                          : e.message ?? 'An error occurred.';
                                 });
                               } finally {
                                 setState(() {
@@ -190,25 +198,30 @@ class _LoginScreenState extends State<LoginScreen> {
                             onPressed: () async {
                               if (email.isEmpty || !isValidEmail(email)) {
                                 setState(() {
-                                  emailError = 'Enter a valid email to reset password.';
+                                  emailError =
+                                      'Enter a valid email to reset password.';
                                 });
                                 return;
                               }
-            
+
                               try {
-                                await _auth.sendPasswordResetEmail(email: email);
+                                await _auth.sendPasswordResetEmail(
+                                    email: email);
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Password reset email sent.')),
+                                  const SnackBar(
+                                      content:
+                                          Text('Password reset email sent.')),
                                 );
                               } catch (e) {
                                 setState(() {
-                                  generalError = 'Error sending reset email: $e';
+                                  generalError =
+                                      'Error sending reset email: $e';
                                 });
                               }
                             },
                             child: const Text(
                               'Forgot Password?',
-                              style: TextStyle(color: Colors.blueAccent),
+                              style: TextStyle(color: Colors.lightBlueAccent),
                             ),
                           ),
                           // Resend Verification Email
@@ -220,7 +233,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   if (user != null) {
                                     await user.sendEmailVerification();
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Verification email resent.')),
+                                      const SnackBar(
+                                          content: Text(
+                                              'Verification email resent.')),
                                     );
                                   }
                                 } catch (e) {
@@ -231,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                               child: const Text(
                                 'Resend Verification Email',
-                                style: TextStyle(color: Colors.blueAccent),
+                                style: TextStyle(color: Colors.lightBlueAccent),
                               ),
                             ),
                         ],
