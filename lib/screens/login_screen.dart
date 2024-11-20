@@ -7,6 +7,7 @@ import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 
 class LoginScreen extends StatefulWidget {
   static const String id = 'login_screen';
+
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
@@ -17,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String password = '';
   bool _loading = false;
   String emailError = '';
+  bool isPasswordVisible = false;
   String passwordError = '';
   String generalError = '';
 
@@ -25,7 +27,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   bool isValidPassword(String password) {
-    return password.length >= 6 && !RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
+    return password.length >= 6 &&
+        !RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
   }
 
   @override
@@ -49,18 +52,20 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       body: ModalProgressHUD(
         inAsyncCall: _loading,
+        blur: BorderSide.strokeAlignCenter,
+        color: Colors.lightBlueAccent,
         child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Flexible(
-                flex: keyboardVisible ? 2 : 3, // Adjust space for Hero
+                flex: keyboardVisible ? 2 : 3,
                 child: Hero(
                   tag: 'logo',
                   child: Image.asset('assets/images/logo.png'),
                 ),
               ),
-              const SizedBox(height: 10.0), // Controlled spacing between image and text fields
+              const SizedBox(height: 10.0),
               Expanded(
                 flex: 2,
                 child: Padding(
@@ -90,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         const SizedBox(height: 8.0),
                         TextField(
-                          obscureText: true,
+                          obscureText: !isPasswordVisible,
                           textAlign: TextAlign.center,
                           onChanged: (value) {
                             password = value;
@@ -98,7 +103,21 @@ class _LoginScreenState extends State<LoginScreen> {
                               passwordError = '';
                             });
                           },
-                          decoration: kLogInPasswordDecoration,
+                          decoration: kLogInPasswordDecoration.copyWith(
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                isPasswordVisible
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  isPasswordVisible = !isPasswordVisible;
+                                });
+                              },
+                            ),
+                          ),
                         ),
                         if (passwordError.isNotEmpty)
                           Text(
@@ -145,7 +164,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             if (!isValidPassword(password)) {
                               setState(() {
-                                passwordError = 'Password must be 6+ characters without special symbols.';
+                                passwordError =
+                                    'Password must be 6+ characters without special symbols.';
                               });
                               return;
                             }
@@ -155,16 +175,35 @@ class _LoginScreenState extends State<LoginScreen> {
                             });
 
                             try {
-                              final existingUser = await _auth.signInWithEmailAndPassword(
+                              final userCredential =
+                                  await _auth.signInWithEmailAndPassword(
                                 email: email,
                                 password: password,
                               );
-                              if (existingUser != null) {
-                                Navigator.pushReplacementNamed(context, ChatScreen.id);
+
+                              final user = userCredential.user;
+                              if (user != null) {
+                                if (user.emailVerified) {
+                                  // Email is verified, proceed to chat screen
+                                  Navigator.pushReplacementNamed(
+                                      context, ChatScreen.id);
+                                } else {
+                                  // Email is not verified
+                                  setState(() {
+                                    generalError =
+                                        'Email is not verified. Please verify your email.';
+                                  });
+                                }
                               }
+                            } on FirebaseAuthException catch (e) {
+                              setState(() {
+                                generalError =
+                                    e.message ?? 'An error occurred.';
+                              });
                             } catch (e) {
                               setState(() {
-                                generalError = e.toString();
+                                generalError =
+                                    'An unexpected error occurred: $e';
                               });
                             } finally {
                               setState(() {
@@ -174,6 +213,31 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                           text: 'Log In',
                         ),
+                        const SizedBox(height: 16.0),
+                        if (generalError.contains('not verified'))
+                          TextButton(
+                            onPressed: () async {
+                              try {
+                                final user = _auth.currentUser;
+                                if (user != null) {
+                                  await user.sendEmailVerification();
+                                  setState(() {
+                                    generalError =
+                                        'Verification email sent. Please check your inbox.';
+                                  });
+                                }
+                              } catch (e) {
+                                setState(() {
+                                  generalError =
+                                      'Error sending verification email: $e';
+                                });
+                              }
+                            },
+                            child: const Text(
+                              'Resend Verification Email',
+                              style: TextStyle(color: Colors.blueAccent),
+                            ),
+                          ),
                       ],
                     ),
                   ),

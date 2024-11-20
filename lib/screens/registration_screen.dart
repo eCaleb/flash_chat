@@ -1,12 +1,13 @@
 import 'package:flash_chat/constants.dart';
-import 'package:flash_chat/screens/chat_screen.dart';
 import 'package:flash_chat/screens/components/rounded_button.dart';
+import 'package:flash_chat/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 
 class RegistrationScreen extends StatefulWidget {
   static const String id = 'registration_screen';
+
   @override
   _RegistrationScreenState createState() => _RegistrationScreenState();
 }
@@ -16,6 +17,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   String email = '';
   String password = '';
   bool _loading = false;
+  bool isPasswordVisible = false;
   String emailError = '';
   String passwordError = '';
   String generalError = '';
@@ -50,24 +52,28 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       ),
       body: ModalProgressHUD(
         inAsyncCall: _loading,
+        progressIndicator: const CircularProgressIndicator(
+          color: Colors.blueAccent,
+        ),
+        opacity: 0.0,
         child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Flexible(
-                flex: keyboardVisible ? 2 : 3, // Shrink the Hero widget when keyboard is visible
+                flex: keyboardVisible ? 2 : 3,
                 child: Hero(
                   tag: 'logo',
                   child: Image.asset('assets/images/logo.png'),
                 ),
               ),
-              const SizedBox(height: 10.0), // Controlled spacing between Hero and form
+              const SizedBox(height: 10.0),
               Expanded(
                 flex: 2,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: SingleChildScrollView(
-                    reverse: true, // Ensure the view scrolls when the keyboard appears
+                    reverse: true,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.start,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -91,7 +97,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           ),
                         const SizedBox(height: 8.0),
                         TextField(
-                          obscureText: true,
+                          obscureText: !isPasswordVisible,
                           textAlign: TextAlign.center,
                           onChanged: (value) {
                             password = value;
@@ -99,7 +105,21 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                               passwordError = '';
                             });
                           },
-                          decoration: kRegisterPasswordDecoration,
+                          decoration: kRegisterPasswordDecoration.copyWith(
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                isPasswordVisible
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  isPasswordVisible = !isPasswordVisible;
+                                });
+                              },
+                            ),
+                          ),
                         ),
                         if (passwordError.isNotEmpty)
                           Text(
@@ -157,13 +177,31 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             });
 
                             try {
-                              final newUser = await _auth.createUserWithEmailAndPassword(
+                              final newUser =
+                                  await _auth.createUserWithEmailAndPassword(
                                 email: email,
                                 password: password,
                               );
-                              if (newUser != null) {
-                                Navigator.pushReplacementNamed(context, ChatScreen.id);
-                              }
+
+                              // Send email verification
+                              await newUser.user!.sendEmailVerification();
+
+                              setState(() {
+                                generalError =
+                                    'Verification email sent. Redirecting to login...';
+                              });
+
+                              // Delay to show the verification message
+                              await Future.delayed(const Duration(seconds: 2));
+
+                              // Navigate to login screen
+                              Navigator.pushReplacementNamed(
+                                  context, LoginScreen.id);
+                            } on FirebaseAuthException catch (e) {
+                              setState(() {
+                                generalError =
+                                    e.message ?? 'An error occurred.';
+                              });
                             } catch (e) {
                               setState(() {
                                 generalError = e.toString();
