@@ -9,9 +9,9 @@ import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'dart:typed_data';
-
 
 final _firestore = FirebaseFirestore.instance;
 firebase_auth.User? loggedInUser;
@@ -30,7 +30,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final _auth = firebase_auth.FirebaseAuth.instance;
   final FlutterSoundRecorder _audioRecorder = FlutterSoundRecorder();
   bool isRecording = false;
-  late String messageText;
+  bool isRecordingEnabled = true;
+   String messageText = '';
 
   @override
   void initState() {
@@ -53,9 +54,105 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<bool> _requestMicrophonePermission() async {
+    PermissionStatus status = await Permission.microphone.request();
+    if (status == PermissionStatus.granted) {
+      return true;
+    } else if (status == PermissionStatus.permanentlyDenied) {
+      // Show a dialog explaining the need for microphone permission
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Microphone Permission Required'),
+            content: const Text(
+              'This app needs microphone access to record voice messages. '
+              'Please go to app settings and grant microphone permission.',
+            ),
+            actions: [
+              TextButton(
+                child: const Text('Open Settings'),
+                onPressed: () {
+                  openAppSettings();
+                  Navigator.of(context).pop();
+                },
+              ),
+              TextButton(
+                child: const Text('Cancel'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+      return false;
+    } else {
+      // Show a dialog for denied permission
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Microphone Access Denied'),
+            content: const Text(
+              'Voice recording is disabled. If you want to record audio, '
+              'please allow microphone access in the next permission prompt.',
+            ),
+            actions: [
+              TextButton(
+                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+      return false;
+    }
+  }
+
   Future<void> initRecorder() async {
-    await _audioRecorder.openRecorder();
-    await _audioRecorder.setSubscriptionDuration(const Duration(milliseconds: 500));
+    bool permissionGranted = await _requestMicrophonePermission();
+    if (!permissionGranted) {
+      // Disable recording functionality
+      setState(() {
+        // Set a flag to disable recording UI or functionality
+        isRecordingEnabled = false;
+      });
+
+      // Optional: Show a snackbar to inform user
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Voice recording is currently unavailable'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await _audioRecorder.openRecorder();
+      await _audioRecorder
+          .setSubscriptionDuration(const Duration(milliseconds: 500));
+
+      // Enable recording functionality
+      setState(() {
+        isRecordingEnabled = true;
+      });
+    } catch (e) {
+      print('Error initializing recorder: $e');
+
+      // Show error to user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to initialize voice recorder: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override
@@ -96,6 +193,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> startRecording() async {
     try {
+      // Double-check permissions
+      if (!await Permission.microphone.isGranted) {
+        print('Microphone permission not granted');
+        return;
+      }
       final directory = await getTemporaryDirectory();
       final audioPath = '${directory.path}/${const Uuid().v4()}.aac';
       await _audioRecorder.startRecorder(toFile: audioPath);
@@ -120,11 +222,11 @@ class _ChatScreenState extends State<ChatScreen> {
         String audioFileName = '${const Uuid().v4()}.aac';
 
         final response = await SupabaseConfig.supabaseClient.storage
-            .from('voice_notes')
+            .from('uploads')
             .uploadBinary(audioFileName, audioBytes);
 
         final publicUrl = SupabaseConfig.supabaseClient.storage
-            .from('voice_notes')
+            .from('uploads')
             .getPublicUrl(audioFileName);
 
         await _firestore.collection('messages').add({
@@ -172,9 +274,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   IconButton(
                     icon: Icon(
                       isRecording ? Icons.mic_off : Icons.mic,
-                      color: isRecording ? Colors.red : Colors.grey,
+                      color: isRecordingEnabled
+                          ? (isRecording ? Colors.red : Colors.grey)
+                          : Colors.grey.withOpacity(0.5),
                     ),
-                    onPressed: isRecording ? stopRecording : startRecording,
+                    onPressed: isRecordingEnabled && !isRecording
+                        ? startRecording
+                        : (isRecording ? stopRecording : null),
                   ),
                   Expanded(
                     child: TextField(
@@ -309,7 +415,8 @@ class MessageBubble extends StatelessWidget {
                   ),
                 );
               },
-              child: const Text('📄 View PDF', style: TextStyle(color: Colors.blue)),
+              child: const Text('📄 View PDF',
+                  style: TextStyle(color: Colors.blue)),
             ),
           if (audioUrl.isNotEmpty)
             Row(
@@ -339,7 +446,8 @@ class MessageBubble extends StatelessWidget {
               color: isMe ? Colors.lightBlueAccent : Colors.white,
               elevation: 5.0,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 12.0),
+                padding: const EdgeInsets.symmetric(
+                    vertical: 10.0, horizontal: 12.0),
                 child: Text(
                   text,
                   style: TextStyle(
