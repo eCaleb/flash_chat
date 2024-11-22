@@ -26,6 +26,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email);
   }
 
+  bool isValidPassword(String password) {
+    return password.length >= 6; // Minimum 6 characters
+  }
+
   @override
   Widget build(BuildContext context) {
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
@@ -50,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
         progressIndicator:
             const CircularProgressIndicator(color: Colors.lightBlueAccent),
         opacity: 0.0,
+        blur: 20,
         child: SafeArea(
           child: GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
@@ -97,7 +102,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             onChanged: (value) {
                               password = value;
                               setState(() {
-                                passwordError = '';
+                                passwordError = isValidPassword(value)
+                                    ? ''
+                                    : 'Password must be at least 6 characters long';
                               });
                             },
                             decoration: kLogInPasswordDecoration.copyWith(
@@ -119,14 +126,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                   },
                                 ),
                               ),
+                              errorText:
+                                  passwordError.isEmpty ? null : passwordError,
                             ),
                           ),
-                          if (passwordError.isNotEmpty)
-                            Text(
-                              passwordError,
-                              style: const TextStyle(color: Colors.red),
-                              textAlign: TextAlign.center,
-                            ),
                           const SizedBox(height: 24.0),
                           if (generalError.isNotEmpty)
                             Text(
