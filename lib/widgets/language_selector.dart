@@ -1,4 +1,3 @@
-// lib/widgets/language_selector.dart
 import 'package:flutter/material.dart';
 
 class LanguageSelector extends StatelessWidget {
@@ -6,10 +5,10 @@ class LanguageSelector extends StatelessWidget {
   final Function(Locale) onLocaleChange;
 
   const LanguageSelector({
-    Key? key,
+    super.key,
     required this.currentLocale,
     required this.onLocaleChange,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +23,6 @@ class LanguageSelector extends StatelessWidget {
           value: 'es',
           child: Text('Español'),
         ),
-        // Add more languages as needed
       ],
       onChanged: (String? languageCode) {
         if (languageCode != null) {
