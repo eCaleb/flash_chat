@@ -28,7 +28,6 @@ class FlashChat extends StatelessWidget {
         supportedLocales: const [
           Locale('en'),
           Locale('es'),
-          // Add more locales as needed
         ],
         // Localization settings
         localizationsDelegates: const [
