@@ -1,0 +1,11 @@
+{
+    "@@locale": "en",
+    "selectLanguage": "Language:",
+    "appTitle": "Flash Chat",
+    "loginButton": "Log In",
+    "registerButton": "Register",
+    "emailHint": "Enter your email",
+    "passwordHint": "Enter your password",
+    "sendButton": "Send",
+    "welcomeMessage": "Welcome to Flash Chat" 
+}

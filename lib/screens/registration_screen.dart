@@ -1,5 +1,5 @@
 import 'package:flash_chat/constants.dart';
-import 'package:flash_chat/screens/components/rounded_button.dart';
+import 'package:flash_chat/widgets/rounded_button.dart';
 import 'package:flash_chat/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';

@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:flash_chat/constants.dart';
@@ -8,13 +12,44 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:audioplayers/audioplayers.dart' as audio;
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
-import 'dart:typed_data';
+
+// Cloudinary Configuration
+const String cloudinaryUrl = 'https://api.cloudinary.com/v1_1/dnho1jy15/auto/upload';
+const String uploadPreset = 'unsigned_upload';
 
 final _firestore = FirebaseFirestore.instance;
 firebase_auth.User? loggedInUser;
+
+// Cloudinary Service Class
+class CloudinaryService {
+  static Future<String?> uploadToCloudinary(dynamic file, String fileName) async {
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse(cloudinaryUrl));
+      
+      if (file is File) {
+        request.files.add(await http.MultipartFile.fromPath('file', file.path));
+      } else if (file is Uint8List) {
+        request.files.add(http.MultipartFile.fromBytes('file', file, filename: fileName));
+      }
+      
+      request.fields['upload_preset'] = uploadPreset;
+      
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+      
+      if (response.statusCode == 200) {
+        var jsonResponse = json.decode(response.body);
+        return jsonResponse['secure_url'];
+      }
+      return null;
+    } catch (e) {
+      print('Error uploading to Cloudinary: $e');
+      return null;
+    }
+  }
+}
 
 class ChatScreen extends StatefulWidget {
   static const String id = 'chat_screen';
@@ -40,24 +75,23 @@ class _ChatScreenState extends State<ChatScreen> {
     initRecorder();
   }
 
-  /// Fetch Firebase Authenticated User
   void getCurrentUser() async {
     final user = _auth.currentUser;
     if (user != null) {
-      loggedInUser = user;
+      setState(() {
+        loggedInUser = user;
+      });
       print('Logged in as: ${loggedInUser!.email}');
     } else {
       print('No user is currently logged in.');
     }
   }
 
-  /// Request Microphone Permission
   Future<bool> _requestMicrophonePermission() async {
     PermissionStatus status = await Permission.microphone.request();
     return status == PermissionStatus.granted;
   }
 
-  /// Initialize Recorder
   Future<void> initRecorder() async {
     bool permissionGranted = await _requestMicrophonePermission();
     if (!permissionGranted) {
@@ -72,8 +106,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _audioRecorder.openRecorder();
-      await _audioRecorder
-          .setSubscriptionDuration(const Duration(milliseconds: 500));
+      await _audioRecorder.setSubscriptionDuration(const Duration(milliseconds: 500));
       setState(() {
         isRecordingEnabled = true;
       });
@@ -88,30 +121,58 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  /// Upload File (No Supabase functionality)
   Future<void> uploadFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles();
 
-      if (result != null) {
-        Uint8List fileBytes = result.files.first.bytes!;
+      if (result != null && result.files.isNotEmpty) {
+        // Show loading indicator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
+
         String fileName = result.files.first.name;
         String fileType = result.files.first.extension ?? '';
+        String? cloudinaryUrl;
 
-        // Upload file to Firebase Firestore (without Supabase)
-        await _firestore.collection('messages').add({
-          'fileName': fileName,
-          'fileType': fileType,
-          'sender': loggedInUser?.email ?? 'Unknown',
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        if (result.files.first.path != null) {
+          File file = File(result.files.first.path!);
+          cloudinaryUrl = await CloudinaryService.uploadToCloudinary(file, fileName);
+        } else if (result.files.first.bytes != null) {
+          cloudinaryUrl = await CloudinaryService.uploadToCloudinary(
+            result.files.first.bytes!,
+            fileName,
+          );
+        }
+
+        // Hide loading indicator
+        Navigator.pop(context);
+
+        if (cloudinaryUrl != null) {
+          await _firestore.collection('messages').add({
+            'fileName': fileName,
+            'fileType': fileType,
+            'fileUrl': cloudinaryUrl,
+            'sender': loggedInUser?.email ?? 'Unknown',
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+          print('File uploaded successfully.');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to upload file')),
+          );
+        }
       }
     } catch (e) {
       print('Error uploading file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error uploading file')),
+      );
     }
   }
 
-  /// Start Recording Audio
   Future<void> startRecording() async {
     try {
       if (!await Permission.microphone.isGranted) {
@@ -129,7 +190,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Stop Recording Audio
   Future<void> stopRecording() async {
     try {
       final audioPath = await _audioRecorder.stopRecorder();
@@ -138,19 +198,43 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       if (audioPath != null) {
-        File audioFile = File(audioPath);
-        Uint8List audioBytes = await audioFile.readAsBytes();
-        String audioFileName = '${const Uuid().v4()}.aac';
+        // Show loading indicator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
 
-        // Upload audio to Firebase Firestore (without Supabase)
-        await _firestore.collection('messages').add({
-          'audioFileName': audioFileName,
-          'sender': loggedInUser?.email ?? 'Unknown',
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        File audioFile = File(audioPath);
+        String audioFileName = '${const Uuid().v4()}.aac';
+        
+        // Upload to Cloudinary
+        String? cloudinaryUrl = await CloudinaryService.uploadToCloudinary(
+          audioFile,
+          audioFileName,
+        );
+
+        // Hide loading indicator
+        Navigator.pop(context);
+
+        if (cloudinaryUrl != null) {
+          await _firestore.collection('messages').add({
+            'audioFileName': audioFileName,
+            'audioUrl': cloudinaryUrl,
+            'sender': loggedInUser?.email ?? 'Unknown',
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to upload audio')),
+          );
+        }
       }
     } catch (e) {
       print('Error stopping recording: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error uploading audio')),
+      );
     }
   }
 
@@ -205,10 +289,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   TextButton(
                     onPressed: () {
                       if (loggedInUser != null && messageText.isNotEmpty) {
-                        // Clear the input field
                         messageTextController.clear();
 
-                        // Add the message to Firestore
                         _firestore.collection('messages').add({
                           'text': messageText,
                           'sender': loggedInUser!.email,
@@ -216,8 +298,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         });
 
                         setState(() {
-                          messageText =
-                              ''; // This will clear the message variable
+                          messageText = '';
                         });
                       }
                     },
@@ -236,14 +317,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+
+
 class MessageStream extends StatelessWidget {
   const MessageStream({super.key});
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream:
-          _firestore.collection('messages').orderBy('timestamp').snapshots(),
+      stream: _firestore.collection('messages').orderBy('timestamp').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(
@@ -279,6 +361,7 @@ class MessageStream extends StatelessWidget {
         return Expanded(
           child: ListView(
             reverse: true,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 20.0),
             children: messageBubbles,
           ),
         );
@@ -307,36 +390,63 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AudioPlayer audioPlayer = AudioPlayer();
-
     return Padding(
       padding: const EdgeInsets.all(10.0),
       child: Column(
-        crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Text(
             sender,
             style: const TextStyle(color: Colors.black54, fontSize: 12.0),
           ),
-          if (fileType == 'jpg' || fileType == 'png')
-            Image.network(fileUrl, height: 150, width: 150),
+          if (fileUrl.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                if (fileType.toLowerCase() == 'pdf') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PdfViewerScreen(pdfUrl: fileUrl),
+                    ),
+                  );
+                }
+              },
+              child: Container(
+                margin: const EdgeInsets.only(top: 5.0, bottom: 5.0),
+                child: fileType.toLowerCase() == 'pdf'
+                    ? Container(
+                        padding: const EdgeInsets.all(10.0),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(10.0),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.picture_as_pdf, color: Colors.red),
+                            SizedBox(width: 8.0),
+                            Text('View PDF'),
+                          ],
+                        ),
+                      )
+                    : Image.network(
+                        fileUrl,
+                        height: 150,
+                        width: 150,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(child: CircularProgressIndicator());
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.error);
+                        },
+                      ),
+              ),
+            ),
           if (audioUrl.isNotEmpty)
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.play_arrow),
-                  onPressed: () {
-                    audioPlayer.play(UrlSource(audioUrl));
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.stop),
-                  onPressed: () {
-                    audioPlayer.stop();
-                  },
-                ),
-              ],
+            AudioMessageBubble(
+              audioUrl: audioUrl,
+              isMe: isMe,
             ),
           if (text.isNotEmpty)
             Material(
@@ -346,9 +456,7 @@ class MessageBubble extends StatelessWidget {
                 bottomLeft: const Radius.circular(30.0),
                 bottomRight: const Radius.circular(30.0),
               ),
-              color: isMe
-                  ? Colors.lightBlueAccent
-                  : Colors.white, // This applies the background color
+              color: isMe ? Colors.lightBlueAccent : Colors.white,
               elevation: 5.0,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -358,14 +466,199 @@ class MessageBubble extends StatelessWidget {
                 child: Text(
                   text,
                   style: TextStyle(
-                    color: isMe
-                        ? Colors.white
-                        : Colors.black, // Text color contrast
+                    color: isMe ? Colors.white : Colors.black,
                     fontSize: 15.0,
                   ),
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class AudioMessageBubble extends StatefulWidget {
+  final String audioUrl;
+  final bool isMe;
+
+  const AudioMessageBubble({
+    super.key,
+    required this.audioUrl,
+    required this.isMe,
+  });
+
+  @override
+  State<AudioMessageBubble> createState() => _AudioMessageBubbleState();
+}
+
+class _AudioMessageBubbleState extends State<AudioMessageBubble> {
+  final audio.AudioPlayer _audioPlayer = audio.AudioPlayer();
+  audio.PlayerState _playerState = audio.PlayerState.stopped;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  bool _isLoading = false;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAudioPlayer();
+  }
+
+  Future<void> _initAudioPlayer() async {
+    try {
+      // Configure audio player
+      await _audioPlayer.setReleaseMode(audio.ReleaseMode.stop);
+      
+      // Set up event listeners
+      _audioPlayer.onPlayerStateChanged.listen((audio.PlayerState state) {
+        print('Player State Changed: $state');
+        setState(() => _playerState = state);
+      });
+
+      _audioPlayer.onDurationChanged.listen((Duration d) {
+        print('Duration Changed: ${d.inSeconds} seconds');
+        setState(() => _duration = d);
+      });
+
+      _audioPlayer.onPositionChanged.listen((Duration p) {
+        print('Position Changed: ${p.inSeconds} seconds');
+        setState(() => _position = p);
+      });
+
+      _audioPlayer.onPlayerComplete.listen((_) {
+        print('Playback Completed');
+        setState(() {
+          _position = Duration.zero;
+          _playerState = audio.PlayerState.stopped;
+        });
+      });
+
+      // Pre-load the audio source
+      setState(() => _isLoading = true);
+      
+      print('Setting source URL: ${widget.audioUrl}');
+      await _audioPlayer.setSource(audio.UrlSource(widget.audioUrl));
+      
+      setState(() {
+        _isLoading = false;
+        _isInitialized = true;
+      });
+      print('Audio player initialized successfully');
+    } catch (e) {
+      print('Error initializing audio player: $e');
+      setState(() {
+        _isLoading = false;
+        _isInitialized = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading audio: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _playPause() async {
+    try {
+      if (!_isInitialized) {
+        print('Player not initialized, reinitializing...');
+        await _initAudioPlayer();
+        return;
+      }
+
+      if (_playerState == audio.PlayerState.playing) {
+        print('Pausing playback');
+        await _audioPlayer.pause();
+      } else {
+        print('Starting playback from URL: ${widget.audioUrl}');
+        await _audioPlayer.play(audio.UrlSource(widget.audioUrl));
+        
+        // Set volume to maximum
+        await _audioPlayer.setVolume(1.0);
+        print('Playback started');
+      }
+    } catch (e) {
+      print('Error during playback: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error playing audio: $e')),
+        );
+      }
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  @override
+  void dispose() {
+    print('Disposing audio player');
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5.0),
+      padding: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration(
+        color: widget.isMe ? Colors.lightBlueAccent.withOpacity(0.2) : Colors.grey[200],
+        borderRadius: BorderRadius.circular(15.0),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isLoading)
+            const SizedBox(
+              width: 40,
+              height: 40,
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: Icon(
+                _playerState == audio.PlayerState.playing
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_filled,
+                size: 40,
+                color: widget.isMe ? Colors.lightBlueAccent : Colors.grey[700],
+              ),
+              onPressed: _playPause,
+            ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _playerState == audio.PlayerState.playing 
+                    ? 'Playing...' 
+                    : 'Voice Message',
+                style: TextStyle(
+                  color: widget.isMe ? Colors.lightBlueAccent : Colors.grey[700],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                style: TextStyle(
+                  color: widget.isMe ? Colors.lightBlueAccent : Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
