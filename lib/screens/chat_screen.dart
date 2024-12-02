@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flash_chat/utils/audio_manager.dart';
+import 'package:flash_chat/utils/voice_recording_overlay.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -16,7 +19,8 @@ import 'package:audioplayers/audioplayers.dart' as audio;
 import 'package:permission_handler/permission_handler.dart';
 
 // Cloudinary Configuration
-const String cloudinaryUrl = 'https://api.cloudinary.com/v1_1/dnho1jy15/auto/upload';
+const String cloudinaryUrl =
+    'https://api.cloudinary.com/v1_1/dnho1jy15/auto/upload';
 const String uploadPreset = 'unsigned_upload';
 
 final _firestore = FirebaseFirestore.instance;
@@ -24,21 +28,23 @@ firebase_auth.User? loggedInUser;
 
 // Cloudinary Service Class
 class CloudinaryService {
-  static Future<String?> uploadToCloudinary(dynamic file, String fileName) async {
+  static Future<String?> uploadToCloudinary(
+      dynamic file, String fileName) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse(cloudinaryUrl));
-      
+
       if (file is File) {
         request.files.add(await http.MultipartFile.fromPath('file', file.path));
       } else if (file is Uint8List) {
-        request.files.add(http.MultipartFile.fromBytes('file', file, filename: fileName));
+        request.files.add(
+            http.MultipartFile.fromBytes('file', file, filename: fileName));
       }
-      
+
       request.fields['upload_preset'] = uploadPreset;
-      
+
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
-      
+
       if (response.statusCode == 200) {
         var jsonResponse = json.decode(response.body);
         return jsonResponse['secure_url'];
@@ -67,6 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool isRecording = false;
   bool isRecordingEnabled = true;
   String messageText = '';
+  String? _recordedAudioPath;
 
   @override
   void initState() {
@@ -106,7 +113,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _audioRecorder.openRecorder();
-      await _audioRecorder.setSubscriptionDuration(const Duration(milliseconds: 500));
+      await _audioRecorder
+          .setSubscriptionDuration(const Duration(milliseconds: 500));
       setState(() {
         isRecordingEnabled = true;
       });
@@ -121,6 +129,15 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  Future<int> _getAudioDuration(String filePath) async {
+    final player = AudioPlayer(); // Create an audio player instance
+    await player.setFilePath(filePath); // Set the file path
+    final duration =
+        player.duration?.inSeconds ?? 0; // Get the duration in seconds
+    await player.dispose(); // Clean up the player after use
+    return duration; // Return the duration
+  }
+
   Future<void> uploadFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles();
@@ -130,7 +147,8 @@ class _ChatScreenState extends State<ChatScreen> {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const Center(child: CircularProgressIndicator()),
+          builder: (context) =>
+              const Center(child: CircularProgressIndicator()),
         );
 
         String fileName = result.files.first.name;
@@ -139,7 +157,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
         if (result.files.first.path != null) {
           File file = File(result.files.first.path!);
-          cloudinaryUrl = await CloudinaryService.uploadToCloudinary(file, fileName);
+          cloudinaryUrl =
+              await CloudinaryService.uploadToCloudinary(file, fileName);
         } else if (result.files.first.bytes != null) {
           cloudinaryUrl = await CloudinaryService.uploadToCloudinary(
             result.files.first.bytes!,
@@ -183,14 +202,36 @@ class _ChatScreenState extends State<ChatScreen> {
       final audioPath = '${directory.path}/${const Uuid().v4()}.aac';
       await _audioRecorder.startRecorder(toFile: audioPath);
       setState(() {
-        isRecording = true;
+        isRecording = true; // Show the recording indicator
+        _recordedAudioPath = audioPath;
       });
     } catch (e) {
       print('Error starting recording: $e');
     }
   }
 
-  Future<void> stopRecording() async {
+  Future<void> _stopAndDiscardRecording() async {
+    try {
+      await _audioRecorder.stopRecorder();
+
+      // Delete the recorded file if it exists
+      if (_recordedAudioPath != null) {
+        final file = File(_recordedAudioPath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+
+      setState(() {
+        isRecording = false;
+        _recordedAudioPath = null;
+      });
+    } catch (e) {
+      print('Error discarding recording: $e');
+    }
+  }
+
+  Future<void> _stopAndUploadRecording() async {
     try {
       final audioPath = await _audioRecorder.stopRecorder();
       setState(() {
@@ -198,16 +239,20 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       if (audioPath != null) {
+        // Fetch audio duration
+        final audioDuration = await _getAudioDuration(audioPath);
+
         // Show loading indicator
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const Center(child: CircularProgressIndicator()),
+          builder: (context) =>
+              const Center(child: CircularProgressIndicator()),
         );
 
         File audioFile = File(audioPath);
         String audioFileName = '${const Uuid().v4()}.aac';
-        
+
         // Upload to Cloudinary
         String? cloudinaryUrl = await CloudinaryService.uploadToCloudinary(
           audioFile,
@@ -218,9 +263,11 @@ class _ChatScreenState extends State<ChatScreen> {
         Navigator.pop(context);
 
         if (cloudinaryUrl != null) {
+          // Save metadata, including duration, to Firestore
           await _firestore.collection('messages').add({
             'audioFileName': audioFileName,
             'audioUrl': cloudinaryUrl,
+            'audioDuration': audioDuration, // Save duration in seconds
             'sender': loggedInUser?.email ?? 'Unknown',
             'timestamp': FieldValue.serverTimestamp(),
           });
@@ -260,56 +307,76 @@ class _ChatScreenState extends State<ChatScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const MessageStream(),
-            Container(
-              decoration: kMessageContainerDecoration,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  IconButton(
-                    icon: const Icon(Icons.attach_file),
-                    onPressed: uploadFile,
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      isRecording ? Icons.mic_off : Icons.mic,
-                      color: isRecording ? Colors.red : Colors.grey,
-                    ),
-                    onPressed: isRecording ? stopRecording : startRecording,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: messageTextController,
-                      onChanged: (value) {
-                        messageText = value;
-                      },
-                      decoration: kMessageTextFieldDecoration,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      if (loggedInUser != null && messageText.isNotEmpty) {
-                        messageTextController.clear();
-
-                        _firestore.collection('messages').add({
-                          'text': messageText,
-                          'sender': loggedInUser!.email,
-                          'timestamp': FieldValue.serverTimestamp(),
-                        });
-
-                        setState(() {
-                          messageText = '';
-                        });
-                      }
-                    },
-                    child: const Text(
-                      'Send',
-                      style: kSendButtonTextStyle,
-                    ),
-                  )
-                ],
-              ),
+            // Chat messages
+            const Expanded(
+              child: MessageStream(),
             ),
+            // Dynamic replacement of TextField with VoiceRecordingIndicator
+            if (isRecording)
+              VoiceRecordingIndicator(
+                onCancel: () async {
+                  await _stopAndDiscardRecording();
+                  setState(() {
+                    isRecording = false; // Switch back to TextField
+                  });
+                },
+                onSend: () async {
+                  await _stopAndUploadRecording();
+                  setState(() {
+                    isRecording = false; // Switch back to TextField
+                  });
+                },
+              )
+            else
+              Container(
+                decoration: kMessageContainerDecoration,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    IconButton(
+                      icon: const Icon(Icons.attach_file),
+                      onPressed: uploadFile,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        isRecording ? Icons.mic_off : Icons.mic,
+                        color: isRecording ? Colors.red : Colors.grey,
+                      ),
+                      onPressed: startRecording,
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: messageTextController,
+                        onChanged: (value) {
+                          messageText = value;
+                        },
+                        decoration: kMessageTextFieldDecoration,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        if (loggedInUser != null && messageText.isNotEmpty) {
+                          messageTextController.clear();
+
+                          _firestore.collection('messages').add({
+                            'text': messageText,
+                            'sender': loggedInUser!.email,
+                            'timestamp': FieldValue.serverTimestamp(),
+                          });
+
+                          setState(() {
+                            messageText = '';
+                          });
+                        }
+                      },
+                      child: const Text(
+                        'Send',
+                        style: kSendButtonTextStyle,
+                      ),
+                    )
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -317,15 +384,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-
-
 class MessageStream extends StatelessWidget {
   const MessageStream({super.key});
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore.collection('messages').orderBy('timestamp').snapshots(),
+      stream:
+          _firestore.collection('messages').orderBy('timestamp').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(
@@ -344,6 +410,7 @@ class MessageStream extends StatelessWidget {
           final fileUrl = messageData['fileUrl'] ?? '';
           final fileType = messageData['fileType'] ?? '';
           final audioUrl = messageData['audioUrl'] ?? '';
+          final audioDuration = messageData['audioDuration'] ?? 0;
           final currentUser = loggedInUser?.email;
 
           messageBubbles.add(
@@ -353,6 +420,7 @@ class MessageStream extends StatelessWidget {
               fileUrl: fileUrl,
               fileType: fileType,
               audioUrl: audioUrl,
+              audioDuration: audioDuration,
               isMe: messageSender == currentUser,
             ),
           );
@@ -361,7 +429,8 @@ class MessageStream extends StatelessWidget {
         return Expanded(
           child: ListView(
             reverse: true,
-            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 20.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 20.0),
             children: messageBubbles,
           ),
         );
@@ -376,6 +445,7 @@ class MessageBubble extends StatelessWidget {
   final String fileUrl;
   final String fileType;
   final String audioUrl;
+  final int audioDuration;
   final bool isMe;
 
   const MessageBubble({
@@ -386,6 +456,7 @@ class MessageBubble extends StatelessWidget {
     this.fileType = '',
     this.audioUrl = '',
     required this.isMe,
+    this.audioDuration = 0,
   });
 
   @override
@@ -393,7 +464,8 @@ class MessageBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(10.0),
       child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Text(
             sender,
@@ -435,7 +507,8 @@ class MessageBubble extends StatelessWidget {
                         width: 150,
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
-                          return const Center(child: CircularProgressIndicator());
+                          return const Center(
+                              child: CircularProgressIndicator());
                         },
                         errorBuilder: (context, error, stackTrace) {
                           return const Icon(Icons.error);
@@ -447,6 +520,7 @@ class MessageBubble extends StatelessWidget {
             AudioMessageBubble(
               audioUrl: audioUrl,
               isMe: isMe,
+              audioDuration: audioDuration,
             ),
           if (text.isNotEmpty)
             Material(
@@ -481,24 +555,31 @@ class MessageBubble extends StatelessWidget {
 class AudioMessageBubble extends StatefulWidget {
   final String audioUrl;
   final bool isMe;
+  final int audioDuration; // Duration in seconds
 
   const AudioMessageBubble({
     super.key,
     required this.audioUrl,
     required this.isMe,
+    required this.audioDuration,
   });
 
   @override
   State<AudioMessageBubble> createState() => _AudioMessageBubbleState();
 }
 
-class _AudioMessageBubbleState extends State<AudioMessageBubble> {
+class _AudioMessageBubbleState extends State<AudioMessageBubble>
+    with AutomaticKeepAliveClientMixin {
   final audio.AudioPlayer _audioPlayer = audio.AudioPlayer();
+  final GlobalAudioManager _audioManager = GlobalAudioManager();
+
   audio.PlayerState _playerState = audio.PlayerState.stopped;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
+  Duration _position = Duration.zero; // Current playback position
   bool _isLoading = false;
   bool _isInitialized = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -508,54 +589,37 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
 
   Future<void> _initAudioPlayer() async {
     try {
-      // Configure audio player
-      await _audioPlayer.setReleaseMode(audio.ReleaseMode.stop);
-      
-      // Set up event listeners
-      _audioPlayer.onPlayerStateChanged.listen((audio.PlayerState state) {
-        print('Player State Changed: $state');
-        setState(() => _playerState = state);
-      });
+      _audioPlayer.setReleaseMode(audio.ReleaseMode.stop);
 
-      _audioPlayer.onDurationChanged.listen((Duration d) {
-        print('Duration Changed: ${d.inSeconds} seconds');
-        setState(() => _duration = d);
+      _audioPlayer.onPlayerStateChanged.listen((audio.PlayerState state) {
+        if (mounted) {
+          setState(() => _playerState = state);
+        }
       });
 
       _audioPlayer.onPositionChanged.listen((Duration p) {
-        print('Position Changed: ${p.inSeconds} seconds');
-        setState(() => _position = p);
+        if (mounted) {
+          setState(() => _position = p);
+        }
       });
 
       _audioPlayer.onPlayerComplete.listen((_) {
-        print('Playback Completed');
-        setState(() {
-          _position = Duration.zero;
-          _playerState = audio.PlayerState.stopped;
-        });
+        if (mounted) {
+          setState(() {
+            _position = Duration.zero;
+            _playerState = audio.PlayerState.stopped;
+            _audioManager.clearCurrentPlayer();
+          });
+        }
       });
 
-      // Pre-load the audio source
-      setState(() => _isLoading = true);
-      
-      print('Setting source URL: ${widget.audioUrl}');
-      await _audioPlayer.setSource(audio.UrlSource(widget.audioUrl));
-      
-      setState(() {
-        _isLoading = false;
-        _isInitialized = true;
-      });
-      print('Audio player initialized successfully');
-    } catch (e) {
-      print('Error initializing audio player: $e');
-      setState(() {
-        _isLoading = false;
-        _isInitialized = false;
-      });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading audio: $e')),
-        );
+        setState(() => _isInitialized = true);
+      }
+    } catch (e) {
+      print('Audio player initialization error: $e');
+      if (mounted) {
+        setState(() => _isInitialized = false);
       }
     }
   }
@@ -563,29 +627,36 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
   Future<void> _playPause() async {
     try {
       if (!_isInitialized) {
-        print('Player not initialized, reinitializing...');
         await _initAudioPlayer();
         return;
       }
 
       if (_playerState == audio.PlayerState.playing) {
-        print('Pausing playback');
         await _audioPlayer.pause();
+        _audioManager.clearCurrentPlayer();
       } else {
-        print('Starting playback from URL: ${widget.audioUrl}');
-        await _audioPlayer.play(audio.UrlSource(widget.audioUrl));
-        
-        // Set volume to maximum
-        await _audioPlayer.setVolume(1.0);
-        print('Playback started');
+        await _audioManager.playAudio(
+            newPlayer: _audioPlayer,
+            audioUrl: widget.audioUrl,
+            onStop: () {
+              if (mounted) {
+                setState(() {
+                  _playerState = audio.PlayerState.stopped;
+                  _position = Duration.zero;
+                });
+              }
+            },
+            onError: () {
+              if (mounted) {
+                setState(() {
+                  _playerState = audio.PlayerState.stopped;
+                  _isInitialized = false;
+                });
+              }
+            });
       }
     } catch (e) {
-      print('Error during playback: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error playing audio: $e')),
-        );
-      }
+      print('Play/Pause error: $e');
     }
   }
 
@@ -598,18 +669,20 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
 
   @override
   void dispose() {
-    print('Disposing audio player');
     _audioPlayer.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 5.0),
       padding: const EdgeInsets.all(8.0),
       decoration: BoxDecoration(
-        color: widget.isMe ? Colors.lightBlueAccent.withOpacity(0.2) : Colors.grey[200],
+        color: widget.isMe
+            ? Colors.lightBlueAccent.withOpacity(0.2)
+            : Colors.grey[200],
         borderRadius: BorderRadius.circular(15.0),
       ),
       child: Row(
@@ -619,10 +692,7 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
             const SizedBox(
               width: 40,
               height: 40,
-              child: Padding(
-                padding: EdgeInsets.all(8.0),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2),
             )
           else
             IconButton(
@@ -641,19 +711,21 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _playerState == audio.PlayerState.playing 
-                    ? 'Playing...' 
+                _playerState == audio.PlayerState.playing
+                    ? 'Playing...'
                     : 'Voice Message',
                 style: TextStyle(
-                  color: widget.isMe ? Colors.lightBlueAccent : Colors.grey[700],
+                  color:
+                      widget.isMe ? Colors.lightBlueAccent : Colors.grey[700],
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                '${_formatDuration(_position)} / ${_formatDuration(Duration(seconds: widget.audioDuration))}',
                 style: TextStyle(
-                  color: widget.isMe ? Colors.lightBlueAccent : Colors.grey[600],
+                  color:
+                      widget.isMe ? Colors.lightBlueAccent : Colors.grey[600],
                   fontSize: 12,
                 ),
               ),
