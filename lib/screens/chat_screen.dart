@@ -505,9 +505,22 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onLongPress:  () {
-        // Trigger delete confirmation on long press
-        onDelete();
+      onLongPress: () {
+        // Allow deletion only if the message was sent by the logged-in user
+        if (isMe) {
+          onDelete();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                L10nHelper.of(context).cannotDeleteMessage,
+                style: const TextStyle(color: Colors.white),
+              ),
+              backgroundColor: Colors.redAccent,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       },
       child: Padding(
         padding: const EdgeInsets.all(10.0),

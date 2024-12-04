@@ -17,6 +17,7 @@
     "sendEmail": "Correo electrónico de verificación enviado.",
     "delete": "Eliminar",
     "cancel": "Cancelar",
+    "cannotDeleteMessage":"No se Puede Eliminar Mensaje",
     "deleteMessage": "Eliminar Mensaje",
     "deleteMessageConfirm": "¿Estás seguro de que quieres eliminar este mensaje?",
     "deleteMessageSuccess": "Mensaje eliminado con éxito.",
