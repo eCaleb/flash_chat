@@ -89,10 +89,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               setState(() {
                                 emailError = isValidEmail(value)
                                     ? ''
-                                    : 'Invalid email format';
+                                    : l10n.emailFormat;
                               });
                             },
-                            decoration: kLogInEmailDecoration.copyWith(
+                            decoration: kLogInEmailDecoration(context).copyWith(
                               errorText: emailError.isEmpty ? null : emailError,
                             ),
                           ),
@@ -106,10 +106,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               setState(() {
                                 passwordError = isValidPassword(value)
                                     ? ''
-                                    : 'Password must be at least 6 characters long';
+                                    : l10n.passwordFormat;
                               });
                             },
-                            decoration: kLogInPasswordDecoration.copyWith(
+                            decoration: kLogInPasswordDecoration(context).copyWith(
                               suffixIcon: Tooltip(
                                 message: isPasswordVisible
                                     ? 'Hide Password'
@@ -146,23 +146,23 @@ class _LoginScreenState extends State<LoginScreen> {
                             onPressed: () async {
                               if (email.isEmpty || !isValidEmail(email)) {
                                 setState(() {
-                                  emailError = 'Enter a valid email.';
+                                  emailError = l10n.emailError;
                                 });
                                 return;
                               }
 
                               if (password.isEmpty) {
                                 setState(() {
-                                  passwordError = 'Please enter your password.';
+                                  passwordError = l10n.passwordError;
                                 });
                                 return;
                               }
-
-                              setState(() {
-                                _loading = true;
-                                generalError = '';
-                              });
-
+                              if (mounted) {
+                                setState(() {
+                                  _loading = true;
+                                  generalError = '';
+                                });
+                              }
                               try {
                                 final userCredential =
                                     await _auth.signInWithEmailAndPassword(
@@ -173,27 +173,35 @@ class _LoginScreenState extends State<LoginScreen> {
                                 final user = userCredential.user;
                                 if (user != null) {
                                   if (user.emailVerified) {
-                                    Navigator.pushReplacementNamed(
-                                        context, ChatScreen.id);
+                                    if (mounted) {
+                                      Navigator.pushReplacementNamed(
+                                          context, ChatScreen.id);
+                                    }
                                   } else {
-                                    setState(() {
-                                      generalError =
-                                          'Email not verified. Please verify.';
-                                    });
+                                    if (mounted) {
+                                      setState(() {
+                                        generalError =
+                                            l10n.verifyEmail;
+                                      });
+                                    }
                                   }
                                 }
                               } on FirebaseAuthException catch (e) {
-                                setState(() {
-                                  generalError = e.code == 'wrong-password'
-                                      ? 'Incorrect password.'
-                                      : e.code == 'user-not-found'
-                                          ? 'No user found for this email.'
-                                          : e.message ?? 'An error occurred.';
-                                });
+                                if (mounted) {
+                                  setState(() {
+                                    generalError = e.code == 'wrong-password'
+                                        ? 'Incorrect password.'
+                                        : e.code == 'user-not-found'
+                                            ? 'No user found for this email.'
+                                            : e.message ?? 'An error occurred.';
+                                  });
+                                }
                               } finally {
-                                setState(() {
-                                  _loading = false;
-                                });
+                                if (mounted) {
+                                  setState(() {
+                                    _loading = false;
+                                  });
+                                }
                               }
                             },
                             text: l10n.loginButton,
@@ -204,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               if (email.isEmpty || !isValidEmail(email)) {
                                 setState(() {
                                   emailError =
-                                      'Enter a valid email to reset password.';
+                                      l10n.resetPassword;
                                 });
                                 return;
                               }
@@ -213,9 +221,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 await _auth.sendPasswordResetEmail(
                                     email: email);
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
+                                   SnackBar(
                                       content:
-                                          Text('Password reset email sent.')),
+                                          Text(l10n.resendEmail)),
                                 );
                               } catch (e) {
                                 setState(() {
@@ -224,9 +232,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 });
                               }
                             },
-                            child: const Text(
-                              'Forgot Password?',
-                              style: TextStyle(color: Colors.lightBlueAccent),
+                            child:  Text(
+                              l10n.forgotPassword,
+                              style: const TextStyle(color: Colors.lightBlueAccent),
                             ),
                           ),
                           // Resend Verification Email
@@ -249,9 +257,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   });
                                 }
                               },
-                              child: const Text(
-                                'Resend Verification Email',
-                                style: TextStyle(color: Colors.lightBlueAccent),
+                              child:  Text(
+                                l10n.resendEmail,
+                                style: const TextStyle(color: Colors.lightBlueAccent),
                               ),
                             ),
                         ],

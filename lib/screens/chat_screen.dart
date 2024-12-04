@@ -350,7 +350,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         onChanged: (value) {
                           messageText = value;
                         },
-                        decoration: kMessageTextFieldDecoration,
+                        decoration: kMessageTextFieldDecoration(context),
                       ),
                     ),
                     TextButton(
@@ -369,8 +369,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           });
                         }
                       },
-                      child: const Text(
-                        'Send',
+                      child: Text(
+                        L10nHelper.of(context).sendButton,
                         style: kSendButtonTextStyle,
                       ),
                     )
@@ -386,6 +386,43 @@ class _ChatScreenState extends State<ChatScreen> {
 
 class MessageStream extends StatelessWidget {
   const MessageStream({super.key});
+
+void confirmDelete(BuildContext context, String messageId, {String? fileUrl}) {
+  showDialog(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title:  Text(L10nHelper.of(context).deleteMessage),
+        content:  Text(L10nHelper.of(context).deleteMessageConfirm),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child:  Text(L10nHelper.of(context).cancel,style: const TextStyle(color: Colors.lightBlueAccent),),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop(); // Close dialog
+              try {
+                // Delete Firestore document
+                await FirebaseFirestore.instance.collection('messages').doc(messageId).delete();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                   SnackBar(content: Text(L10nHelper.of(context).deleteMessageSuccess)),
+                );
+              } catch (e) {
+                print('Error deleting message: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                   SnackBar(content: Text(L10nHelper.of(context).deleteMessageError)),
+                );
+              }
+            },
+            child:  Text(L10nHelper.of(context).delete,style: const TextStyle(color: Colors.lightBlueAccent),),
+          ),
+        ],
+      );
+    },
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -405,6 +442,7 @@ class MessageStream extends StatelessWidget {
         List<MessageBubble> messageBubbles = [];
         for (var message in messages) {
           final messageData = message.data() as Map<String, dynamic>;
+          final messageId = message.id;
           final messageText = messageData['text'] ?? '';
           final messageSender = messageData['sender'] ?? '';
           final fileUrl = messageData['fileUrl'] ?? '';
@@ -418,10 +456,12 @@ class MessageStream extends StatelessWidget {
               text: messageText,
               sender: messageSender,
               fileUrl: fileUrl,
+              messageId: messageId,
               fileType: fileType,
               audioUrl: audioUrl,
               audioDuration: audioDuration,
               isMe: messageSender == currentUser,
+              onDelete: () => confirmDelete(context, messageId, fileUrl: fileUrl),
             ),
           );
         }
@@ -445,7 +485,9 @@ class MessageBubble extends StatelessWidget {
   final String fileUrl;
   final String fileType;
   final String audioUrl;
+  final String messageId;
   final int audioDuration;
+  final VoidCallback onDelete;
   final bool isMe;
 
   const MessageBubble({
@@ -456,97 +498,104 @@ class MessageBubble extends StatelessWidget {
     this.fileType = '',
     this.audioUrl = '',
     required this.isMe,
-    this.audioDuration = 0,
+    this.audioDuration = 0, 
+    required this.onDelete, required this.messageId,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(10.0),
-      child: Column(
-        crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Text(
-            sender,
-            style: const TextStyle(color: Colors.black54, fontSize: 12.0),
-          ),
-          if (fileUrl.isNotEmpty)
-            GestureDetector(
-              onTap: () {
-                if (fileType.toLowerCase() == 'pdf') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PdfViewerScreen(pdfUrl: fileUrl),
-                    ),
-                  );
-                }
-              },
-              child: Container(
-                margin: const EdgeInsets.only(top: 5.0, bottom: 5.0),
-                child: fileType.toLowerCase() == 'pdf'
-                    ? Container(
-                        padding: const EdgeInsets.all(10.0),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.picture_as_pdf, color: Colors.red),
-                            SizedBox(width: 8.0),
-                            Text('View PDF'),
-                          ],
-                        ),
-                      )
-                    : Image.network(
-                        fileUrl,
-                        height: 150,
-                        width: 150,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(Icons.error);
-                        },
+    return GestureDetector(
+      onLongPress:  () {
+        // Trigger delete confirmation on long press
+        onDelete();
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(10.0),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Text(
+              sender,
+              style: const TextStyle(color: Colors.black54, fontSize: 12.0),
+            ),
+            if (fileUrl.isNotEmpty)
+              GestureDetector(
+                onTap: () {
+                  if (fileType.toLowerCase() == 'pdf') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PdfViewerScreen(pdfUrl: fileUrl),
                       ),
-              ),
-            ),
-          if (audioUrl.isNotEmpty)
-            AudioMessageBubble(
-              audioUrl: audioUrl,
-              isMe: isMe,
-              audioDuration: audioDuration,
-            ),
-          if (text.isNotEmpty)
-            Material(
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(isMe ? 30.0 : 0.0),
-                topRight: Radius.circular(isMe ? 0.0 : 30.0),
-                bottomLeft: const Radius.circular(30.0),
-                bottomRight: const Radius.circular(30.0),
-              ),
-              color: isMe ? Colors.lightBlueAccent : Colors.white,
-              elevation: 5.0,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 10.0,
-                  horizontal: 12.0,
+                    );
+                  }
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(top: 5.0, bottom: 5.0),
+                  child: fileType.toLowerCase() == 'pdf'
+                      ? Container(
+                          padding: const EdgeInsets.all(10.0),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(10.0),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.picture_as_pdf, color: Colors.red),
+                              SizedBox(width: 8.0),
+                              Text('View PDF'),
+                            ],
+                          ),
+                        )
+                      : Image.network(
+                          fileUrl,
+                          height: 150,
+                          width: 150,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(Icons.error);
+                          },
+                        ),
                 ),
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    color: isMe ? Colors.white : Colors.black,
-                    fontSize: 15.0,
+              ),
+            if (audioUrl.isNotEmpty)
+              AudioMessageBubble(
+                audioUrl: audioUrl,
+                isMe: isMe,
+                audioDuration: audioDuration,
+              ),
+            if (text.isNotEmpty)
+              Material(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(isMe ? 30.0 : 0.0),
+                  topRight: Radius.circular(isMe ? 0.0 : 30.0),
+                  bottomLeft: const Radius.circular(30.0),
+                  bottomRight: const Radius.circular(30.0),
+                ),
+                color: isMe ? Colors.lightBlueAccent : Colors.white,
+                elevation: 5.0,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10.0,
+                    horizontal: 12.0,
+                  ),
+                  child: Text(
+                    text,
+                    style: TextStyle(
+                      color: isMe ? Colors.white : Colors.black,
+                      fontSize: 15.0,
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -712,8 +761,8 @@ class _AudioMessageBubbleState extends State<AudioMessageBubble>
             children: [
               Text(
                 _playerState == audio.PlayerState.playing
-                    ? 'Playing...'
-                    : 'Voice Message',
+                    ? L10nHelper.of(context).audioPlaying
+                    : L10nHelper.of(context).voiceMessage,
                 style: TextStyle(
                   color:
                       widget.isMe ? Colors.lightBlueAccent : Colors.grey[700],

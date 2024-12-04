@@ -3,6 +3,7 @@ import 'package:flash_chat/widgets/rounded_button.dart';
 import 'package:flash_chat/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -33,6 +34,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
@@ -82,10 +84,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             onChanged: (value) {
                               email = value;
                               setState(() {
-                                emailError = isValidEmail(value) ? '' : 'Invalid email format';
+                                emailError = isValidEmail(value) ? '' : l10n.emailFormat;
                               });
                             },
-                            decoration: kRegisterEmailDecoration.copyWith(
+                            decoration: kRegisterEmailDecoration(context).copyWith(
                               errorText: emailError.isEmpty ? null : emailError,
                             ),
                           ),
@@ -99,10 +101,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                               setState(() {
                                 passwordError = isValidPassword(value)
                                     ? ''
-                                    : 'Password must be 6+ characters and not contain special symbols.';
+                                    : l10n.passwordFormat;
                               });
                             },
-                            decoration: kRegisterPasswordDecoration.copyWith(
+                            decoration: kRegisterPasswordDecoration(context).copyWith(
                               suffixIcon: Tooltip(
                                 message: isPasswordVisible ? 'Hide Password' : 'Show Password',
                                 child: IconButton(
@@ -134,14 +136,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             onPressed: () async {
                               if (email.isEmpty || !isValidEmail(email)) {
                                 setState(() {
-                                  emailError = 'Enter a valid email.';
+                                  emailError = l10n.emailError;
                                 });
                                 return;
                               }
                               if (password.isEmpty || !isValidPassword(password)) {
                                 setState(() {
                                   passwordError =
-                                      'Password must be 6+ characters and not contain special symbols.';
+                                      l10n.passwordError;
                                 });
                                 return;
                               }
@@ -160,7 +162,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                 // Send email verification
                                 await newUser.user!.sendEmailVerification();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Verification email sent.')),
+                                   SnackBar(content: Text(l10n.sendEmail)),
                                 );
             
                                 // Redirect to login
@@ -183,7 +185,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                 });
                               }
                             },
-                            text: 'Register',
+                            text: l10n.registerButton,
                           ),
                         ],
                       ),
