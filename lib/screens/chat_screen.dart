@@ -516,7 +516,7 @@ class MessageBubble extends StatelessWidget {
                 L10nHelper.of(context).cannotDeleteMessage,
                 style: const TextStyle(color: Colors.white),
               ),
-              backgroundColor: Colors.redAccent,
+              backgroundColor: Colors.black,
               duration: const Duration(seconds: 2),
             ),
           );
