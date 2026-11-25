@@ -23,6 +23,11 @@ const String cloudinaryUrl =
     'https://api.cloudinary.com/v1_1/dnho1jy15/auto/upload';
 const String uploadPreset = 'unsigned_upload';
 
+// Only these file types can be shared, up to 10 MB. The same list is
+// enforced for message documents in firestore.rules.
+const List<String> allowedFileTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
+const int maxUploadBytes = 10 * 1024 * 1024;
+
 final _firestore = FirebaseFirestore.instance;
 firebase_auth.User? loggedInUser;
 
@@ -88,7 +93,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         loggedInUser = user;
       });
-      print('Logged in as: ${loggedInUser!.email}');
+      print('User signed in.');
     } else {
       print('No user is currently logged in.');
     }
@@ -140,9 +145,28 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> uploadFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: allowedFileTypes,
+      );
 
       if (result != null && result.files.isNotEmpty) {
+        // Some platforms ignore the picker's filter, so check again here
+        final picked = result.files.first;
+        final fileExtension = (picked.extension ?? '').toLowerCase();
+        if (!allowedFileTypes.contains(fileExtension)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Only images and PDFs can be shared')),
+          );
+          return;
+        }
+        if (picked.size > maxUploadBytes) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Files must be 10 MB or smaller')),
+          );
+          return;
+        }
+
         // Show loading indicator
         showDialog(
           context: context,
@@ -151,8 +175,11 @@ class _ChatScreenState extends State<ChatScreen> {
               const Center(child: CircularProgressIndicator()),
         );
 
-        String fileName = result.files.first.name;
-        String fileType = result.files.first.extension ?? '';
+        // Long names are shortened to fit the 200-character limit in firestore.rules
+        String fileName = picked.name.length > 200
+            ? picked.name.substring(picked.name.length - 200)
+            : picked.name;
+        String fileType = fileExtension;
         String? cloudinaryUrl;
 
         if (result.files.first.path != null) {
@@ -355,6 +382,12 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     TextButton(
                       onPressed: () {
+                        if (messageText.length > 2000) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Messages can be up to 2,000 characters')),
+                          );
+                          return;
+                        }
                         if (loggedInUser != null && messageText.isNotEmpty) {
                           messageTextController.clear();
 
