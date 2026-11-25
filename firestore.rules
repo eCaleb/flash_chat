@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// Security rules for Flash Chat.
+// Deploy with: firebase deploy --only firestore:rules --project <your-project-id>
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Signed in, with a verified email (the app also requires this to log in)
+    function isVerifiedUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true;
+    }
+
+    // Files and voice notes must point at our own Cloudinary account, so a
+    // message can't make every reader's phone load an arbitrary URL.
+    // Change dnho1jy15 if you use a different Cloudinary cloud name.
+    function isOurCloudinaryUrl(url) {
+      return url is string
+        && url.size() <= 500
+        && url.matches('https://res[.]cloudinary[.]com/dnho1jy15/.*');
+    }
+
+    function isValidNewMessage(data) {
+      return data.keys().hasOnly([
+          'text', 'sender', 'timestamp',
+          'fileName', 'fileType', 'fileUrl',
+          'audioFileName', 'audioUrl', 'audioDuration'
+        ])
+        // You can only post as yourself
+        && data.sender == request.auth.token.email
+        // The timestamp must come from the server, not the phone
+        && data.timestamp == request.time
+        && (!('text' in data) || (data.text is string && data.text.size() <= 2000))
+        && (!('fileName' in data) || (data.fileName is string && data.fileName.size() <= 200))
+        && (!('fileType' in data) || data.fileType in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'])
+        && (!('fileUrl' in data) || isOurCloudinaryUrl(data.fileUrl))
+        && (!('audioFileName' in data) || (data.audioFileName is string && data.audioFileName.size() <= 200))
+        && (!('audioUrl' in data) || isOurCloudinaryUrl(data.audioUrl))
+        && (!('audioDuration' in data) || (data.audioDuration is int && data.audioDuration >= 0 && data.audioDuration <= 600));
+    }
+
+    match /messages/{messageId} {
+      allow read: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidNewMessage(request.resource.data);
+      // Only the sender can delete a message, and nobody can edit one
+      allow delete: if isVerifiedUser() && resource.data.sender == request.auth.token.email;
+      allow update: if false;
+    }
+
+    // Everything else is closed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

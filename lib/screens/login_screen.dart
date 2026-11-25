@@ -189,11 +189,19 @@ class _LoginScreenState extends State<LoginScreen> {
                               } on FirebaseAuthException catch (e) {
                                 if (mounted) {
                                   setState(() {
-                                    generalError = e.code == 'wrong-password'
-                                        ? 'Incorrect password.'
-                                        : e.code == 'user-not-found'
-                                            ? 'No user found for this email.'
-                                            : e.message ?? 'An error occurred.';
+                                    // One message for a wrong email or a
+                                    // wrong password, so the screen doesn't
+                                    // reveal which emails have accounts
+                                    generalError = e.code == 'too-many-requests'
+                                        ? 'Too many attempts. Try again later.'
+                                        : const [
+                                            'wrong-password',
+                                            'user-not-found',
+                                            'invalid-credential',
+                                            'invalid-email',
+                                          ].contains(e.code)
+                                            ? 'Incorrect email or password.'
+                                            : 'Sign-in failed. Please try again.';
                                   });
                                 }
                               } finally {
